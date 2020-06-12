@@ -1,5 +1,3 @@
-%%writefile person_detect.py
-
 import numpy as np
 import time
 from openvino.inference_engine import IENetwork, IECore
