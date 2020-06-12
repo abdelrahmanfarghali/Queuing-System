@@ -1,3 +1,5 @@
+%%writefile person_detect.py
+
 import numpy as np
 import time
 from openvino.inference_engine import IENetwork, IECore
@@ -44,7 +46,7 @@ class PersonDetect:
         self.threshold=threshold
 
         try:
-            self.model=IENetwork(self.model_structure, self.model_weights)
+            self.model=IECore().read_network(self.model_structure, self.model_weights)
         except Exception as e:
             raise ValueError("Could not Initialise the network. Have you enterred the correct model path?")
 
@@ -60,13 +62,22 @@ class PersonDetect:
         self.output = next(iter(nets.outputs))
         return self.core, nets
         
-    def predict(self, net, image):
-        input_dict={input_name:image}
-        return net.infer(input_dict)
+    def predict(self, image, model):
+        image = self.preprocess_input(image)
+        input_dict ={self.input_name:image}
+        output = model.infer(input_dict)
+        coords = []
+        for rect in output[0][0]:
+                coords.append(rect[3])
+                coords.append(rect[5])
+                coords.append(rect[4])
+                coords.append(rect[6])
+        return self.draw_outputs(coords, input_dict[self.input_name])
     
     def draw_outputs(self, coords, image):
-        image = cv2.cvtColor(im_cv, cv2.COLOR_BGR2RGB)
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         cv2.rectangle(image, coords, (255, 0, 0), 1)
+        return coords, image
 
     def preprocess_outputs(self, outputs):
         args = parser.parse_args()
@@ -78,6 +89,7 @@ class PersonDetect:
         image = cv2.resize(image, (320, 544))
         image = image.transpose((2, 0, 1))  # Change data layout from HWC to CHW
         image = image.reshape((1, 3, 320, 544))
+        return image
 
 
 def main(args):
@@ -90,7 +102,7 @@ def main(args):
 
     start_model_load_time=time.time()
     pd= PersonDetect(model, device, threshold)
-    pd.load_model()
+    p, m = pd.load_model()
     total_model_load_time = time.time() - start_model_load_time
 
     queue=Queue()
@@ -120,12 +132,12 @@ def main(args):
 
     try:
         while cap.isOpened():
-            ret, frame=cap.read()
+            ret, frame = cap.read()
             if not ret:
                 break
             counter+=1
             
-            coords, image= pd.predict(frame)
+            coords, image = pd.predict(frame, m)
             num_people= queue.check_coords(coords)
             print(f"Total People in frame = {len(coords)}")
             print(f"Number of people in queue = {num_people}")
